@@ -2,6 +2,8 @@
 
 A command line tool for fetching bible passages from biblegateway.com.
 
+If fetching from the internet fails, the script prints an error message and exits.
+
 ## Prerequisites
 
 [Beautiful Soup 4](http://www.crummy.com/software/BeautifulSoup/), [Requests](http://docs.python-requests.org/en/latest/), and [Unidecode](https://pypi.python.org/pypi/Unidecode/) are required to run bible-fetch.

@@ -25,3 +25,14 @@ jobs:
     # Runs a single command using the runners shell
     - name: Super-Linter
       uses: github/super-linter@v2.2.0
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: pip install pytest
+
+    - name: Run tests
+      run: pytest

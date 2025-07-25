@@ -92,10 +92,16 @@ def get_passage(soup):
     return "\n\n".join(map(lambda t: render(t), root.select("p, div.poetry p")))
 
 
-query, version, show_verse_numbers, use_ascii = parse_args()
-soup = get_soup(query, version)
-passage = get_passages(soup).strip()
-if use_ascii:
-    passage = unidecode(passage)
-if passage is not None:
-    print(passage)
+def main():
+    global show_verse_numbers
+    query, version, show_verse_numbers, use_ascii = parse_args()
+    soup = get_soup(query, version)
+    passage = get_passages(soup).strip()
+    if use_ascii:
+        passage = unidecode(passage)
+    if passage is not None:
+        print(passage)
+
+
+if __name__ == "__main__":
+    main()

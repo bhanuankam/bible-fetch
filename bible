@@ -1,14 +1,29 @@
 #!/usr/bin/env python3
 
 import sys
-from bs4 import BeautifulSoup
+from typing import Optional, Tuple, TYPE_CHECKING
 import argparse
 import requests
 from unidecode import unidecode
 import urllib.parse
 
+if TYPE_CHECKING:
+    from bs4.element import Tag
+    from bs4 import BeautifulSoup
+else:
+    try:
+        from bs4.element import Tag
+        from bs4 import BeautifulSoup
+    except (ImportError, ModuleNotFoundError):
+        from bs4 import BeautifulSoup, Tag
 
-def parse_args():
+
+def parse_args() -> Tuple[str, str, bool, bool]:
+    """Parse command line arguments for bible reference fetching.
+
+    Returns:
+        Tuple of (reference, version, show_verse_numbers, use_ascii)
+    """
     default_version = "NIV"
     parser = argparse.ArgumentParser(
         description="Fetch Bible references from biblegateway.com"
@@ -38,23 +53,42 @@ def parse_args():
     args = parser.parse_args()
     return (
         " ".join(args.reference),
-        args.version or default_version,
+        args.version,
         args.verse_numbers,
         args.ascii,
     )
 
 
-def get_soup(query, version):
-    query = urllib.parse.quote_plus(query)
-    r = requests.get(
-        "https://www.biblegateway.com/passage/?search=" + query + "&version=" + version
-    )
-    return BeautifulSoup(r.text, "html.parser")
+def get_soup(query: str, version: str) -> Optional[BeautifulSoup]:
+    """Fetch and parse HTML from BibleGateway.
+
+    Args:
+        query: The Bible reference to search for
+        version: The Bible translation version (e.g., NIV, NLT)
+
+    Returns:
+        BeautifulSoup object if successful, None otherwise
+    """
+    try:
+        query = urllib.parse.quote_plus(query)
+        url = f"https://www.biblegateway.com/passage/?search={query}&version={version}"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return BeautifulSoup(response.text, "html.parser")
+    except requests.RequestException as e:
+        print(f"Error fetching passage: {e}", file=sys.stderr)
+        return None
 
 
-def clean(tag):
+def clean(tag: Tag, show_verse_numbers: bool) -> None:
+    """Remove unwanted HTML elements from the passage tag.
+
+    Args:
+        tag: BeautifulSoup Tag to clean
+        show_verse_numbers: Whether to keep verse number elements
+    """
     for t in tag.find_all("sup"):
-        if show_verse_numbers and "versenum" in t["class"]:
+        if show_verse_numbers and "versenum" in t.get("class", []):
             continue
         t.decompose()
     if not show_verse_numbers:
@@ -64,8 +98,17 @@ def clean(tag):
         t.decompose()
 
 
-def render(tag):
-    clean(tag)
+def render(tag: Tag, show_verse_numbers: bool) -> str:
+    """Render a cleaned passage tag as plain text.
+
+    Args:
+        tag: BeautifulSoup Tag to render
+        show_verse_numbers: Whether to keep verse number elements
+
+    Returns:
+        Plain text rendering of the passage
+    """
+    clean(tag, show_verse_numbers)
     text = ""
     for t in tag.descendants:
         if isinstance(t, str):
@@ -75,32 +118,61 @@ def render(tag):
     return text
 
 
-def get_passages(soup):
+def get_passages(soup: BeautifulSoup, show_verse_numbers: bool) -> Optional[str]:
+    """Extract and format all passages from the parsed HTML.
+
+    Args:
+        soup: BeautifulSoup object containing the parsed HTML
+        show_verse_numbers: Whether to include verse numbers
+
+    Returns:
+        Formatted passage text, or None if no passages found
+    """
     passages = soup.find_all(class_="passage-table")
-    if passages is None:
-        return
+    if not passages:
+        return None
     text = ""
     for p in passages:
-        text += get_passage(p) + "\n\n"
-    return text.replace('  ', ' ')
+        passage_text = get_passage(p, show_verse_numbers)
+        if passage_text:
+            text += passage_text + "\n\n"
+    return text.replace('  ', ' ') if text else None
 
 
-def get_passage(soup):
+def get_passage(soup: Tag, show_verse_numbers: bool) -> Optional[str]:
+    """Extract a single passage from a passage table.
+
+    Args:
+        soup: BeautifulSoup Tag containing a passage table
+        show_verse_numbers: Whether to include verse numbers
+
+    Returns:
+        Formatted passage text, or None if not found
+    """
     root = soup.find(class_="result-text-style-normal")
     if root is None:
-        return
-    return "\n\n".join(map(lambda t: render(t), root.select("p, div.poetry p")))
+        return None
+    return "\n\n".join(render(t, show_verse_numbers) for t in root.select("p, div.poetry p"))
 
 
-def main():
-    global show_verse_numbers
+def main() -> None:
+    """Main entry point for the bible-fetch tool."""
     query, version, show_verse_numbers, use_ascii = parse_args()
     soup = get_soup(query, version)
-    passage = get_passages(soup).strip()
+
+    if soup is None:
+        sys.exit(1)
+
+    passage = get_passages(soup, show_verse_numbers)
+
+    if passage is None:
+        return
+
+    passage = passage.strip()
     if use_ascii:
         passage = unidecode(passage)
-    if passage is not None:
-        print(passage)
+
+    print(passage)
 
 
 if __name__ == "__main__":
